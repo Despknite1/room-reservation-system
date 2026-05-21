@@ -385,6 +385,102 @@ app.put("/admin/rooms/:id", async (req, res) => {
   }
 });
 
+function escapeCsvValue(value) {
+  if (value === null || value === undefined) return "";
+
+  const stringValue = String(value);
+  const escapedValue = stringValue.replace(/"/g, '""');
+
+  return `"${escapedValue}"`;
+}
+
+app.get("/admin/export-csv", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        reservations.id,
+        rooms.name AS room_name,
+        users.email AS user_email,
+        COALESCE(users.full_name, '') AS user_name,
+        to_char(reservations.start_time, 'YYYY-MM-DD HH24:MI:SS') AS start_time,
+        to_char(reservations.end_time, 'YYYY-MM-DD HH24:MI:SS') AS end_time,
+        reservations.status
+      FROM reservations
+      JOIN rooms ON reservations.room_id = rooms.id
+      JOIN users ON reservations.user_id = users.id
+      ORDER BY reservations.start_time DESC;
+    `);
+
+    const headers = [
+      "ID",
+      "Sala",
+      "Email użytkownika",
+      "Imię i nazwisko",
+      "Od",
+      "Do",
+      "Status",
+    ];
+
+    const rows = result.rows.map((reservation) => [
+      reservation.id,
+      reservation.room_name,
+      reservation.user_email,
+      reservation.user_name,
+      reservation.start_time,
+      reservation.end_time,
+      reservation.status,
+    ]);
+
+    const csvContent = [
+      headers.map(escapeCsvValue).join(";"),
+      ...rows.map((row) => row.map(escapeCsvValue).join(";")),
+    ].join("\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="reservations-report.csv"'
+    );
+
+    res.send("\uFEFF" + csvContent);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Export CSV error" });
+  }
+});
+
+app.get("/admin/stats", async (req, res) => {
+  try {
+    const summaryResult = await pool.query(`
+      SELECT
+        COUNT(*) AS total_reservations,
+        COUNT(*) FILTER (WHERE status = 'active') AS active_reservations,
+        COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled_reservations,
+        COUNT(DISTINCT room_id) AS reserved_rooms
+      FROM reservations;
+    `);
+
+    const topRoomsResult = await pool.query(`
+      SELECT
+        rooms.name AS room_name,
+        COUNT(reservations.id) AS reservations_count
+      FROM reservations
+      JOIN rooms ON reservations.room_id = rooms.id
+      GROUP BY rooms.name
+      ORDER BY reservations_count DESC
+      LIMIT 5;
+    `);
+
+    res.json({
+      summary: summaryResult.rows[0],
+      topRooms: topRoomsResult.rows,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Stats error" });
+  }
+});
+
 app.get("/admin/export-pdf", async (req, res) => {
   try {
     const result = await pool.query(`

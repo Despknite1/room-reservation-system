@@ -82,6 +82,7 @@ function App() {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [adminReservations, setAdminReservations] = useState([]);
   const [equipmentList, setEquipmentList] = useState([]);
+  const [adminStats, setAdminStats] = useState(null);
 
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem("user");
@@ -109,6 +110,12 @@ function App() {
   fetch(`${API}/admin/reservations`)
     .then((res) => res.json())
     .then((data) => setAdminReservations(data));
+};
+
+const loadAdminStats = () => {
+  fetch(`${API}/admin/stats`)
+    .then((res) => res.json())
+    .then((data) => setAdminStats(data));
 };
 
 const loadEquipment = () => {
@@ -422,15 +429,16 @@ useEffect(() => {
   Wyposażenie
 </button>
 
-      <button
-        style={styles.infoCard}
-        onClick={() => {
-          loadAdminReservations();
-          setPage("adminReservations");
-        }}
-      >
-        Rezerwacje
-      </button>
+<button
+  style={styles.infoCard}
+  onClick={() => {
+    loadAdminReservations();
+    loadAdminStats();
+    setPage("adminReservations");
+  }}
+>
+  Rezerwacje i raporty
+</button>
 
      <button
   style={styles.infoCard}
@@ -440,13 +448,26 @@ useEffect(() => {
 >
   Export PDF
 </button>
+
+<button
+  style={styles.infoCard}
+  onClick={() => {
+    window.open(`${API}/admin/export-csv`, "_blank");
+  }}
+>
+  Export CSV
+</button>
     </div>
   </div>
 )}
 
 {page === "adminReservations" && (
-  <AdminReservations reservations={adminReservations} />
+  <AdminReservations
+    reservations={adminReservations}
+    stats={adminStats}
+  />
 )}
+
 {page === "adminRooms" && (
   <AdminRooms
     rooms={rooms}
@@ -1040,15 +1061,73 @@ function AdminRooms({ rooms, equipmentList, loadRooms, loadEquipment }) {
   );
 }
 
-function AdminReservations({ reservations }) {
+function AdminReservations({ reservations, stats }) {
   return (
     <div style={styles.adminPage}>
       <div style={styles.pageHeaderRow}>
         <div>
-          <h1>Wszystkie rezerwacje</h1>
-          <p style={styles.mutedText}>Kompaktowy podgląd rezerwacji użytkowników.</p>
+          <h1>Raporty i rezerwacje</h1>
+          <p style={styles.mutedText}>
+            Statystyki wykorzystania sal oraz lista rezerwacji użytkowników.
+          </p>
+        </div>
+
+        <div style={styles.compactActionRow}>
+          <button
+            style={styles.bigButton}
+            onClick={() => window.open(`${API}/admin/export-pdf`, "_blank")}
+          >
+            Export PDF
+          </button>
+
+          <button
+            style={styles.bigButton}
+            onClick={() => window.open(`${API}/admin/export-csv`, "_blank")}
+          >
+            Export CSV
+          </button>
         </div>
       </div>
+
+      {stats && (
+        <>
+          <h2>Statystyki rezerwacji</h2>
+
+          <div style={styles.adminStatsGrid}>
+            <div style={styles.infoCard}>
+              Wszystkie rezerwacje: {stats.summary.total_reservations}
+            </div>
+
+            <div style={styles.infoCard}>
+              Aktywne: {stats.summary.active_reservations}
+            </div>
+
+            <div style={styles.infoCard}>
+              Anulowane: {stats.summary.cancelled_reservations}
+            </div>
+
+            <div style={styles.infoCard}>
+              Sale z rezerwacjami: {stats.summary.reserved_rooms}
+            </div>
+          </div>
+
+          <h2>Najczęściej rezerwowane sale</h2>
+
+          <div style={styles.adminReservationsGrid}>
+            {stats.topRooms.map((room) => (
+              <div key={room.room_name} style={styles.adminReservationCard}>
+                <h2>{room.room_name}</h2>
+                <p>
+                  <strong>Liczba rezerwacji:</strong>{" "}
+                  {room.reservations_count}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <h2 style={{ marginTop: "35px" }}>Lista rezerwacji</h2>
 
       {reservations.length === 0 && <p>Brak rezerwacji.</p>}
 
